@@ -73,6 +73,7 @@ Remove blockchain and state databases`,
 		Usage:     "Low level database operations",
 		ArgsUsage: "",
 		Subcommands: []*cli.Command{
+			dbTestCmd,
 			dbInspectCmd,
 			dbStatCmd,
 			dbCompactCmd,
@@ -172,6 +173,14 @@ a data corruption.`,
 		Action: dbStats,
 		Name:   "stats",
 		Usage:  "Print leveldb statistics",
+		Flags: slices.Concat([]cli.Flag{
+			utils.SyncModeFlag,
+		}, utils.NetworkFlags, utils.DatabaseFlags),
+	}
+	dbTestCmd = &cli.Command{
+		Action: dbTest,
+		Name:   "test",
+		Usage:  "Test leveldb statistics",
 		Flags: slices.Concat([]cli.Flag{
 			utils.SyncModeFlag,
 		}, utils.NetworkFlags, utils.DatabaseFlags),
@@ -611,6 +620,22 @@ func showDBStats(db ethdb.KeyValueStater) {
 		return
 	}
 	fmt.Println(stats)
+}
+func dbTest(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+
+	bads := rawdb.ReadAllBadBlocks(db)
+	fmt.Println("bad blocks", "num", len(bads), "blocks", bads)
+
+	for _, block := range bads {
+		fmt.Println("hash: ", block.Hash(), "number: ", block.NumberU64())
+	}
+	showDBStats(db)
+	return nil
 }
 
 func dbStats(ctx *cli.Context) error {

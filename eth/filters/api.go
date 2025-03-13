@@ -17,6 +17,7 @@
 package filters
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -153,6 +154,66 @@ func (api *FilterAPI) NewPendingTransactionFilter(fullTx *bool) rpc.ID {
 	})
 
 	return pendingTxSub.ID
+}
+
+type PendingTransactionFilter struct {
+	From    common.Address
+	To      common.Address
+	FuncSig [4]byte
+}
+
+// NewPendingTransactions creates a subscription that is triggered each time a
+// transaction enters the transaction pool. If fullTx is true the full tx is
+// sent to the client, otherwise the hash is sent.
+func (api *FilterAPI) NewPendingTransactionsWithFilter(ctx context.Context, filter PendingTransactionFilter) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
+
+	gopool.Submit(func() {
+		txs := make(chan []*types.Transaction, 128)
+		pendingTxSub := api.events.SubscribePendingTxs(txs)
+		defer pendingTxSub.Unsubscribe()
+
+		chainConfig := api.sys.backend.ChainConfig()
+
+		for {
+			select {
+			case txs := <-txs:
+				// To keep the original behaviour, send a single tx hash in one notification.
+				// TODO(rjl493456442) Send a batch of tx hashes in one notification
+				latest := api.sys.backend.CurrentHeader()
+				for _, tx := range txs {
+					rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
+					if filter.From != (common.Address{}) {
+						if rpcTx.From != filter.From {
+							continue
+						}
+					}
+					if filter.To != (common.Address{}) {
+						if rpcTx.To == nil || *rpcTx.To != filter.To {
+							continue
+						}
+					}
+
+					if filter.FuncSig != ([4]byte{}) {
+						if !bytes.Equal(rpcTx.Input[:4], filter.FuncSig[:]) {
+							continue
+						}
+					}
+					notifier.Notify(rpcSub.ID, rpcTx)
+
+				}
+			case <-rpcSub.Err():
+				return
+			}
+		}
+	})
+
+	return rpcSub, nil
 }
 
 // NewPendingTransactions creates a subscription that is triggered each time a

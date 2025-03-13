@@ -18,9 +18,29 @@
 package utils
 
 import (
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/node"
 	"reflect"
 	"testing"
 )
+
+func Test_ReadHead(t *testing.T) {
+	n, err := node.New(&node.Config{DataDir: "/mnt/c/Users/10273/Desktop/bsc/data/fast"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainDb, err := n.OpenDatabaseWithFreezer("chaindata", 128, 16384, "", "", false, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := chainDb.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(info)
+	b := rawdb.ReadAllBadBlocks(chainDb)
+	t.Log(len(b))
+}
 
 func Test_SplitTagsFlag(t *testing.T) {
 	t.Parallel()
